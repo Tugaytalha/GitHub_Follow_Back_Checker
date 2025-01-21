@@ -130,7 +130,7 @@ def unfollow_user(token: str, target_username: str) -> str:
         return f"Failed to unfollow {target_username}. Status: {response.status_code}"
 
 
-def check_follows(username: str, token: str) -> str:
+def check_follows(username: str, token: str) -> Union[str, str]:
     """
     Check who the given user is following but not followed back by, and return results.
     """
@@ -138,23 +138,26 @@ def check_follows(username: str, token: str) -> str:
     token = token.strip()
 
     if not username:
-        return "Error: Please provide a valid GitHub username."
+        return "Error: Please provide a valid GitHub username.", ""
     if not token:
         return (
             "Error: Personal Access Token is required.\n"
             "Visit https://github.com/settings/tokens to create one."
-        )
+        ), ""
 
     result = find_non_mutual_follows(token, username)
 
     if isinstance(result, str) and result.startswith("Error:"):
-        return result  # Pass along the error message
+        return result, ""  # Pass along the error message
 
     if not result:
-        return "All users you follow are following you back (or the lists are empty)."
+        return "All users you follow are following you back (or the lists are empty).", ""
 
     sorted_result = sorted(list(result))
-    return "These users do NOT follow you back:\n" + "\n".join(sorted_result)
+    return (
+        "These users do NOT follow you back:\n" + "\n".join(sorted_result),
+        ", ".join(sorted_result)
+    )
 
 
 def unfollow_users(token: str, usernames: str) -> str:
@@ -205,7 +208,7 @@ with gr.Blocks() as app:
     check_button.click(
         fn=check_follows,
         inputs=[username_input, token_input],
-        outputs=result_output
+        outputs=[result_output, unfollow_input]
     )
     unfollow_button.click(
         fn=unfollow_users,
