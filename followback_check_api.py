@@ -103,18 +103,36 @@ def find_non_mutual_follows(token: str, username: str) -> Union[str, Set[str]]:
         # Perform set difference to find non-mutual
         not_following_back = following - followers
 
-        if not not_following_back:
-            return set()  # or an empty set to indicate none found
-        return not_following_back
+        return not_following_back if not_following_back else set()
 
     except Exception as e:
         return f"Error: {str(e)}"
 
 
+def unfollow_user(token: str, target_username: str) -> str:
+    """
+    Unfollow a specific user.
+    """
+    endpoint = f"/user/following/{target_username}"
+    headers = {
+        "Authorization": f"token {token.strip()}",
+        "Accept": "application/vnd.github+json"
+    }
+    response = requests.delete(f"{API_BASE_URL}{endpoint}", headers=headers)
+
+    if response.status_code == 204:
+        return f"Successfully unfollowed {target_username}."
+    elif response.status_code == 403:
+        return "403 Forbidden – You may lack permission to unfollow this user."
+    elif response.status_code == 404:
+        return "404 Not Found – This user doesn't exist, or you were not following them."
+    else:
+        return f"Failed to unfollow {target_username}. Status: {response.status_code}"
+
+
 def check_follows(username: str, token: str) -> str:
     """
-    Gradio interface function: returns a user-friendly message
-    about who isn't following 'username' back.
+    Check who the given user is following but not followed back by, and return results.
     """
     username = username.strip()
     token = token.strip()
@@ -133,20 +151,39 @@ def check_follows(username: str, token: str) -> str:
         return result  # Pass along the error message
 
     if not result:
-        return f"All users you follow are following you back (or the lists are empty)."
+        return "All users you follow are following you back (or the lists are empty)."
 
-    # Convert the set to a sorted list for consistent display
     sorted_result = sorted(list(result))
     return "These users do NOT follow you back:\n" + "\n".join(sorted_result)
+
+
+def unfollow_users(token: str, usernames: str) -> str:
+    """
+    Unfollow a list of usernames separated by commas.
+    """
+    token = token.strip()
+    usernames = [u.strip() for u in usernames.split(",") if u.strip()]
+
+    if not token:
+        return "Error: Personal Access Token is required to perform unfollow actions."
+    if not usernames:
+        return "Error: Please provide at least one username to unfollow."
+
+    messages = []
+    for username in usernames:
+        message = unfollow_user(token, username)
+        messages.append(message)
+
+    return "\n".join(messages)
 
 
 # ---------------------------------------------------------------------
 # Gradio App
 # ---------------------------------------------------------------------
 with gr.Blocks() as app:
-    gr.Markdown("# GitHub Follow Checker (API Version)")
+    gr.Markdown("# GitHub Follow Checker with Unfollow Feature (API Version)")
     gr.Markdown(
-        "Enter your GitHub username and a Personal Access Token (PAT) with at least `read:user` scope."
+        "Enter your GitHub username and a Personal Access Token (PAT) with at least `read:user` and `user:follow` scopes."
     )
 
     with gr.Row():
@@ -157,16 +194,24 @@ with gr.Blocks() as app:
             placeholder="ghp_xxx... (keep this private)"
         )
 
-    result_output = gr.Textbox(label="Result", lines=10)
-    check_button = gr.Button("Check")
+    result_output = gr.Textbox(label="Non-Mutual Follow Results", lines=10)
+    unfollow_input = gr.Textbox(label="Users to Unfollow (comma-separated)")
+    unfollow_output = gr.Textbox(label="Unfollow Results", lines=10)
 
-    # When check_button is clicked, call check_follows(username, token)
+    with gr.Row():
+        check_button = gr.Button("Check Non-Mutual Follows")
+        unfollow_button = gr.Button("Unfollow Users")
+
     check_button.click(
         fn=check_follows,
         inputs=[username_input, token_input],
         outputs=result_output
     )
+    unfollow_button.click(
+        fn=unfollow_users,
+        inputs=[token_input, unfollow_input],
+        outputs=unfollow_output
+    )
 
 if __name__ == "__main__":
-    # Launch the Gradio interface
     app.launch()
